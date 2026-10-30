@@ -2,7 +2,8 @@
 
 The owner confirmed live official app status and controls through the relay
 on both models. Offline startup/recovery now passes on both physical devices;
-the final cloud/app recheck after this change is in progress. This project has
+cloud reconnection also passes, but the final app recheck awaits the owner.
+This project has
 not been installed into the owner's running Home Assistant.
 
 ## Confirmed on physical devices, 2026-10-30
@@ -100,6 +101,12 @@ Local speed 3 and Auto passed again after those reconnects. The final test kept
 both upstreams unavailable for over eight minutes, including approximately
 four minutes after the forced device reconnect, with fresh status continuing
 and zero cloud bytes. Both stayed in Auto until forwarding was restored.
+Specifically, the AI-370 had 513 seconds and the AI-600 had 521 seconds of
+recorded offline operation. After restoring forwarding, both cloud sessions
+accepted the retained registration within the next five-second observation
+interval, without a device reconnect. Local speed 2 and Auto also passed with
+the cloud connected. A subsequent idle cloud timeout/reconnect recovered while
+local status remained available on the same device connections.
 
 First attachment took approximately three minutes through the firmware's
 existing retry/registration cycle. Later device reconnects took approximately
@@ -109,8 +116,12 @@ No firmware image, update URL, different firmware version, provisioning,
 filter-reset or Wi-Fi-setting command was sent.
 
 The isolated test environment and private captures remain outside the running
-HA configuration and Git. Final temporary-rule/listener cleanup is recorded
-after the app recheck below.
+HA configuration and Git. The final app check was requested while both relay
+sessions were registered. No reply arrived during that temporary test window,
+so final-code app status/control is still pending, despite the earlier app
+acceptance on both models. The test routes were rolled back and listeners
+stopped; do not treat a later app check on the original direct routes as proof
+of final-code relay behavior.
 
 The owner subsequently explicitly prohibited changes to or bypasses of
 OpenClash. All subsequent live tests use only source-specific purifier DNAT
@@ -119,6 +130,8 @@ overrides or running-HA configuration changes are part of this delivery.
 
 ## Remaining acceptance checks
 
-- Recheck normal app forwarding after any protocol fallback changes.
+- Repeat a temporary final-code relay test when the owner can check live app
+  status and speed 3 → Auto on both models. Earlier app acceptance and final
+  cloud registration/recovery are confirmed, but they are separate evidence.
 
 Optional PM10/filter-life readings remain unverified and are not exposed.
