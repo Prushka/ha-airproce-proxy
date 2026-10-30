@@ -172,6 +172,7 @@ async def test_initial_version_retries_cannot_prevent_first_registration():
         await device.writer.drain()
         await asyncio.sleep(0.1)
         assert not any(f[2:4] == b"\xfe\xfd" for f in device.frames)
+        assert not any(f[2:4] == b"\xff\xf7" for f in device.frames)
         assert bytes(cloud.received) == VERSION_REQUEST
         device.writer.write(registration() + VERSION_REQUEST)
         await device.writer.drain()

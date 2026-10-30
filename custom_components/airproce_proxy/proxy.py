@@ -329,9 +329,9 @@ class DeviceSession:
                 if (request := recovery_request(frame)) is not None:
                     opcode, firmware = request
                     # On first attachment, let firmware finish its natural
-                    # registration cycle. Answering version retries before any
+                    # registration cycle. Acknowledging reports/retries before
                     # registration can prevent it ever identifying to the cloud.
-                    if opcode != 0x103 or self._registration is not None:
+                    if opcode == 1 or self._registration is not None:
                         self._acknowledgements.setdefault(
                             opcode,
                             (time.monotonic() + self.config.acknowledgement_timeout, firmware),

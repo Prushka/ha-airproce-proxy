@@ -95,8 +95,8 @@ pending work is bounded to three operations; retries do not postpone an
 existing deadline. A timely checksummed cloud reply cancels its fallback.
 Late cloud replies are still forwarded unchanged, as are the original requests.
 
-On first attachment, version retries are allowed to finish the device's
-natural registration cycle before version fallback is enabled. Otherwise a
+On first attachment, retries are allowed to finish the device's natural
+registration cycle before status/version fallback is enabled. Otherwise a
 device can stay locally responsive without ever identifying itself to the
 upstream server. First attachment or an HA restart can therefore take a few
 minutes. Once observed, the registration remains available across device TCP
