@@ -51,6 +51,10 @@ No test installs this integration into the owner's running HA instance.
 4. Immediate local queries during new connections coincided with failed
    startup and module-command text in the TCP stream. Local polling now waits
    for a validated device report. Preamble bytes are preserved, not discarded.
+5. Stable live tests established registered cloud sessions on both models.
+   The AI-370 exposed a command-readback timeout. After bounded confirmation
+   retries and query/reply serialization were added, AI-600 local speed control
+   and restoration to Auto passed with its cloud session still registered.
 
 The owner subsequently explicitly prohibited changes to or bypasses of
 OpenClash. All subsequent live tests use only source-specific purifier DNAT

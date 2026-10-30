@@ -8,6 +8,7 @@ from collections import deque
 from .protocol import CONTROL_REPLY, QUERY_REPLY, REPORT, decode_state
 
 MAX_WIRE_FRAME = 65535 + 7
+MODULE_PREAMBLE = b"AT+CIPSENDRAW\r"
 
 
 class QueueFullError(ConnectionError):
@@ -45,6 +46,16 @@ class ByteQueue:
         self.size = 0
         self._ready.clear()
 
+    def discard_one(self, data: bytes) -> None:
+        """Remove a queued registration when that same frame is replayed first."""
+        try:
+            self._items.remove(data)
+        except ValueError:
+            return
+        self.size -= len(data)
+        if not self._items:
+            self._ready.clear()
+
 
 class WireFramer:
     """Partition the byte stream without discarding or rewriting any byte.
@@ -55,14 +66,21 @@ class WireFramer:
     at the validated state envelope instead of swallowing that next report.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, *, module_preamble: bool = False) -> None:
         self.buffer = bytearray()
+        self.module_preamble = module_preamble
 
     def feed(self, data: bytes) -> list[bytes]:
         out = []
         for offset in range(0, len(data), MAX_WIRE_FRAME):
             self.buffer.extend(data[offset : offset + MAX_WIRE_FRAME])
             while len(self.buffer) >= 4:
+                if self.module_preamble and self.buffer.startswith(MODULE_PREAMBLE):
+                    out.append(bytes(self.buffer[: len(MODULE_PREAMBLE)]))
+                    del self.buffer[: len(MODULE_PREAMBLE)]
+                    continue
+                if self.module_preamble and MODULE_PREAMBLE.startswith(self.buffer):
+                    break
                 size = int.from_bytes(self.buffer[:2], "big") + 7
                 if size < 8:
                     out.append(bytes(self.buffer[:1]))

@@ -96,3 +96,14 @@ async def test_cloud_queue_never_blocks_producer_and_accounts_for_bytes():
     queue.put(b"other")
     queue.clear()
     assert queue.size == 0
+
+
+def test_module_startup_text_is_preserved_without_hiding_registration():
+    preamble = b"AT+CIPSENDRAW\r"
+    registration = bytes.fromhex("005e000100010010000641492d363030") + bytes(85)
+    wire = preamble + registration + report()
+    for cut in range(len(wire) + 1):
+        parser = WireFramer(module_preamble=True)
+        frames = parser.feed(wire[:cut]) + parser.feed(wire[cut:])
+        assert frames == [preamble, registration, report()]
+        assert not parser.buffer

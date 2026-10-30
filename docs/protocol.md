@@ -13,6 +13,11 @@ two bytes identify the operation, and bytes 4–5 correlate requests/replies.
 Unknown operation payloads are forwarded without interpreting or rewriting
 them. Byte 6 and captured timestamps remain opaque in the command templates.
 
+The module can first emit the literal text `AT+CIPSENDRAW` followed by a
+carriage return. This observed preamble is forwarded immediately and unchanged,
+before applying binary framing to subsequent bytes. Treating its ASCII letters
+as a binary length delayed and combined it with the registration message.
+
 Known state notifications are 35 bytes (`001c0009`); local query responses are
 36 bytes (`001dfffc`) with a 20-byte status tail. Validated fields are:
 
@@ -48,6 +53,11 @@ queries. Changing the two-byte request ID was verified for queries and control
 templates on both units. Fresh IDs avoid recently observed cloud requests;
 replies to the proxy's own requests are not sent upstream. Normal unsolicited
 state reports and cloud-requested responses are forwarded.
+
+The next cloud frame waits for an outstanding local query/reply exchange to
+finish (bounded by the query timeout), preventing simultaneous messages from
+competing in the shared UART parser. Only confirmation queries are retried;
+the control command itself is not automatically resent.
 
 ## Registration and recovery
 

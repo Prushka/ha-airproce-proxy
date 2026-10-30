@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import secrets
 import socket
 import time
 from collections.abc import Callable
@@ -66,6 +67,7 @@ class PurifierProxy:
             self.session is not None
             and not self.session.closed
             and self.state is not None
+            and self.last_seen > 0
             and time.monotonic() - self.last_seen < self.config.stale_after
         )
 
@@ -139,18 +141,24 @@ class DeviceSession:
         self.writer = writer
         self.closed = False
         self.cloud_connected = False
+        self.cloud_registered = False
         self.cloud_bytes_received = 0
         self.cloud_bytes_sent = 0
+        # Only the device's own observed registration, retained in RAM for this
+        # device session. Never synthesize credentials or persist this payload.
+        self._registration: bytes | None = None
         self._stop = asyncio.Event()
+        self._ready = asyncio.Event()
         self._reset_cloud = asyncio.Event()
         self._outgoing = ByteQueue(self.config.queue_bytes)
         self._write_lock = asyncio.Lock()
+        self._transaction_lock = asyncio.Lock()
         self._control_lock = asyncio.Lock()
         self._query_lock = asyncio.Lock()
         self._pending: dict[int, asyncio.Future[DeviceState]] = {}
         self._owned: dict[int, float] = {}
         self._cloud_ids: dict[int, float] = {}
-        self._sequence = 0xD000
+        self._sequence = 0xD000 + secrets.randbelow(0x3000)
 
     def stop(self) -> None:
         self.closed = True
@@ -205,7 +213,9 @@ class DeviceSession:
                 raise ControlError("The purifier stopped accepting data") from err
 
     async def read_state(self) -> DeviceState:
-        async with self._query_lock:
+        if not self._ready.is_set():
+            raise ControlError("The purifier is still initializing its connection")
+        async with self._query_lock, self._transaction_lock:
             seq = self._allocate()
             future = asyncio.get_running_loop().create_future()
             self._pending[seq] = future
@@ -230,17 +240,24 @@ class DeviceSession:
 
     async def _apply(self, name: str, state: DeviceState) -> None:
         frame = command(name, context_speed=state.raw_speed, sequence=self._allocate())
-        await self._send(frame)
+        async with self._transaction_lock:
+            await self._send(frame)
         # Firmware changes can take several reports to settle. A fresh query must
         # confirm the requested target; unsolicited notifications are insufficient.
         for _ in range(3):
             await asyncio.sleep(0.4)
-            current = await self.read_state()
+            try:
+                current = await self.read_state()
+            except ControlError:
+                continue
             if matches(current, name):
                 return
         raise ControlError(f"The purifier did not confirm {name}")
 
     async def _poll(self) -> None:
+        # TCP accept can precede UART passthrough initialization. Wait for
+        # validated device data before injecting local requests.
+        await self._ready.wait()
         while not self.closed:
             try:
                 await self.read_state()
@@ -258,7 +275,7 @@ class DeviceSession:
             self._reset_cloud.set()
 
     async def _device_reader(self) -> None:
-        observer, frames = StateObserver(), WireFramer()
+        observer, frames = StateObserver(), WireFramer(module_preamble=True)
         while not self.closed:
             try:
                 async with asyncio.timeout(self.config.fragment_timeout if frames.buffer else None):
@@ -271,6 +288,7 @@ class DeviceSession:
                 self._forward(frames.finish())
                 return
             for report in observer.feed(data):
+                self._ready.set()
                 if self.owner.session is self:
                     self.owner.state = report.state
                     self.owner.last_seen = time.monotonic()
@@ -279,11 +297,19 @@ class DeviceSession:
                 if pending is not None and not pending.done():
                     pending.set_result(report.state)
             for frame in frames.feed(data):
+                if (
+                    40 <= len(frame) <= 4096
+                    and frame[2:4] == b"\x00\x01"
+                    and frame[7:10] == b"\x10\x00\x06"
+                    and frame[10:16] in (b"AI-370", b"AI-600")
+                ):
+                    self._registration = frame
                 seq = response_sequence(frame)
                 if seq is None or self._owned.get(seq, 0) <= time.monotonic():
                     self._forward(frame)
 
     async def _cloud_manager(self) -> None:
+        first_attempt = True
         while not self.closed:
             writer = None
             tasks = []
@@ -297,9 +323,12 @@ class DeviceSession:
                     )
                 self.cloud_connected = True
                 self.owner.changed()
+                registration = self._registration if not first_attempt else None
+                if registration:
+                    self._outgoing.discard_one(registration)
                 tasks = [
                     asyncio.create_task(self._cloud_reader(reader)),
-                    asyncio.create_task(self._cloud_writer(writer)),
+                    asyncio.create_task(self._cloud_writer(writer, registration)),
                     asyncio.create_task(self._reset_cloud.wait()),
                 ]
                 done, _ = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
@@ -308,7 +337,9 @@ class DeviceSession:
             except (OSError, TimeoutError, ConnectionError, ControlError) as err:
                 _LOGGER.debug("Cloud relay reconnecting: %s", type(err).__name__)
             finally:
+                first_attempt = False
                 self.cloud_connected = False
+                self.cloud_registered = False
                 for task in tasks:
                     task.cancel()
                 await asyncio.gather(*tasks, return_exceptions=True)
@@ -318,7 +349,12 @@ class DeviceSession:
                 self.owner.changed()
             await asyncio.sleep(self.config.retry_delay)
 
-    async def _cloud_writer(self, writer) -> None:
+    async def _cloud_writer(self, writer, registration: bytes | None = None) -> None:
+        if registration:
+            async with asyncio.timeout(self.config.write_timeout):
+                writer.write(registration)
+                await writer.drain()
+                self.cloud_bytes_sent += len(registration)
         while True:
             data = await self._outgoing.get()
             async with asyncio.timeout(self.config.write_timeout):
@@ -339,14 +375,21 @@ class DeviceSession:
                 return
             self.cloud_bytes_received += len(data)
             for frame in frames.feed(data):
+                if len(frame) >= 8 and frame[2:4] == b"\xff\xff":
+                    self.cloud_registered = frame[7] == 200
+                    self.owner.changed()
                 if len(frame) >= 6:
                     seq = int.from_bytes(frame[4:6], "big")
                     self._cloud_ids[seq] = time.monotonic() + 180
                     # Never rewrite a cloud ID. Let an existing local query finish
                     # first, then return ownership of this ID to the cloud.
                     if (pending := self._pending.get(seq)) is not None:
-                        with suppress(ControlError, TimeoutError):
-                            async with asyncio.timeout(self.config.query_timeout):
-                                await asyncio.shield(pending)
+                        # wait() does not propagate a local query's cancellation
+                        # into the independent cloud reader.
+                        await asyncio.wait({pending}, timeout=self.config.query_timeout)
                     self._owned.pop(seq, None)
-                await self._send(frame)
+                # These units share a UART parser between local requests and
+                # cloud traffic. Let a bounded local query/reply finish before
+                # forwarding the next cloud frame; never split or rewrite it.
+                async with self._transaction_lock:
+                    await self._send(frame)

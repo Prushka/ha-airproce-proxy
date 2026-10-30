@@ -29,6 +29,8 @@ class FakePurifier:
 
     async def connect(self, port):
         self.reader, self.writer = await asyncio.open_connection("127.0.0.1", port)
+        self.writer.write(report(speed=self.speed, mode=self.mode, queried=False))
+        await self.writer.drain()
         self.task = asyncio.create_task(self.run())
 
     async def run(self):
@@ -108,6 +110,8 @@ async def system(**overrides):
     await device.connect(proxy.server.sockets[0].getsockname()[1])
     try:
         await wait_for(lambda: proxy.available and cloud.connections)
+        await wait_for(lambda: bytes(cloud.received) == report(queried=False))
+        cloud.received.clear()
         yield proxy, device, cloud
     finally:
         await device.close()
@@ -161,6 +165,23 @@ async def test_cloud_disconnect_reconnects_without_device_reconnect():
         assert proxy.state.mode == "sleep"
 
 
+async def test_cloud_reconnect_replays_only_observed_device_registration():
+    # Synthetic registration with no real serial, MAC, or authenticator.
+    registration = bytes.fromhex("005e000100010010000641492d363030") + bytes(85)
+    async with system() as (proxy, device, cloud):
+        device.writer.write(registration)
+        await device.writer.drain()
+        await wait_for(lambda: bytes(cloud.received) == registration)
+        session = proxy.session
+        cloud.connections[-1].close()
+        await cloud.connections[-1].wait_closed()
+        await wait_for(lambda: len(cloud.connections) >= 2)
+        await wait_for(lambda: bytes(cloud.received) == registration * 2)
+        assert proxy.session is session and proxy.available
+        await proxy.execute("fan_3")
+        assert proxy.state.speed == 3
+
+
 async def test_local_status_does_not_depend_on_any_cloud_server():
     # Reserve then close a port: real connection refusal, no patched networking.
     reserve = await asyncio.start_server(lambda r, w: w.close(), "127.0.0.1", 0)
@@ -208,6 +229,40 @@ async def test_overflow_is_bounded_and_requests_cloud_reset():
         await wait_for(lambda: len(cloud.connections) >= 2)
 
 
+async def test_timed_out_local_query_collision_does_not_cancel_cloud_or_device():
+    async with system() as (proxy, device, cloud):
+        device.respond = False
+        query_task = asyncio.create_task(proxy.session.read_state())
+        await wait_for(lambda: bool(proxy.session._pending))
+        seq = next(iter(proxy.session._pending))
+        cloud_query = b"\x00\x08\x00\x04" + seq.to_bytes(2) + bytes(9)
+        cloud.connections[-1].write(cloud_query)
+        await cloud.connections[-1].drain()
+        with pytest.raises(ControlError):
+            await query_task
+        await wait_for(lambda: cloud_query in device.frames)
+        device.respond = True
+        await proxy.execute("fan_2")
+        assert proxy.available and proxy.cloud_connected
+
+
+async def test_cloud_frame_waits_for_local_query_reply_without_being_rewritten():
+    async with system(query_timeout=0.5) as (proxy, device, cloud):
+        device.respond = False
+        query_task = asyncio.create_task(proxy.session.read_state())
+        await wait_for(lambda: bool(proxy.session._pending))
+        seq = next(iter(proxy.session._pending))
+        cloud_query = bytes.fromhex("000800041234250000019fd0e781af")
+        cloud.connections[-1].write(cloud_query)
+        await cloud.connections[-1].drain()
+        await asyncio.sleep(0.05)
+        assert cloud_query not in device.frames
+        device.writer.write(report(sequence=seq))
+        await device.writer.drain()
+        assert (await query_task).mode == "auto"
+        await wait_for(lambda: cloud_query in device.frames)
+
+
 async def test_shutdown_releases_port_and_all_tasks():
     async with system() as (proxy, device, cloud):
         port = proxy.server.sockets[0].getsockname()[1]
@@ -244,3 +299,44 @@ async def test_untrusted_peer_is_rejected_before_upstream_connect():
         writer.close()
         await writer.wait_closed()
         await proxy.stop()
+
+
+async def test_startup_waits_for_device_report_before_injecting_any_local_bytes():
+    cloud = FakeCloud()
+    server = await asyncio.start_server(cloud.accept, "127.0.0.1", 0)
+    proxy = PurifierProxy(
+        ProxyConfig(
+            "127.0.0.1",
+            0,
+            "127.0.0.1",
+            cloud_host="127.0.0.1",
+            cloud_port=server.sockets[0].getsockname()[1],
+            query_timeout=0.1,
+        ),
+        lambda: None,
+    )
+    await proxy.start()
+    reader, writer = await asyncio.open_connection(
+        "127.0.0.1", proxy.server.sockets[0].getsockname()[1]
+    )
+    try:
+        with pytest.raises(TimeoutError):
+            await asyncio.wait_for(reader.read(1), 0.15)
+        registration = bytes.fromhex("005e000100010010000641492d363030") + bytes(85)
+        startup = b"AT+CIPSENDRAW\r" + registration
+        writer.write(startup)
+        await writer.drain()
+        await wait_for(lambda: bytes(cloud.received) == startup)
+        assert proxy.session._registration == registration
+        with pytest.raises(TimeoutError):
+            await asyncio.wait_for(reader.read(1), 0.15)
+        writer.write(report(queried=False))
+        await writer.drain()
+        assert (await asyncio.wait_for(reader.readexactly(15), 1))[2:4] == b"\x00\x04"
+    finally:
+        writer.close()
+        await writer.wait_closed()
+        await proxy.stop()
+        await cloud.close()
+        server.close()
+        await server.wait_closed()
