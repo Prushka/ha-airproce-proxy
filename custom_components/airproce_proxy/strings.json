@@ -1,0 +1,52 @@
+{
+  "title": "AirProce Proxy",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Connect an AirProce through a local proxy",
+        "description": "Add one purifier per listener port. A reviewed, manual router rule must redirect this purifier's TCP cloud connection to that port. No cloud account is needed. Until redirection is configured, entities will be unavailable.",
+        "data": {
+          "name": "Device name",
+          "model": "Model",
+          "mac": "Purifier MAC address",
+          "purifier_host": "Purifier LAN IPv4 address",
+          "listen_host": "Home Assistant LAN IPv4 address",
+          "listen_port": "Local proxy listening port",
+          "allowed_peer": "Expected connection source IPv4 address (router when using SNAT)"
+        }
+      }
+    },
+    "error": {
+      "invalid_config": "Check the name, model, MAC address, IPv4 addresses and port.",
+      "cannot_bind": "Home Assistant cannot listen on this address and port. Check the host network and whether the port is already in use.",
+      "port_in_use": "Another purifier already uses this listener address and port. Choose a separate port."
+    },
+    "abort": {"already_configured": "This purifier is already configured."}
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Update the local proxy",
+        "description": "Changing addresses or ports requires a matching, manually reviewed router rule update. The integration does not change router settings. The MAC address must remain the same.",
+        "data": {
+          "name": "Device name",
+          "model": "Model",
+          "mac": "Purifier MAC address",
+          "purifier_host": "Purifier LAN IPv4 address",
+          "listen_host": "Home Assistant LAN IPv4 address",
+          "listen_port": "Local proxy listening port",
+          "allowed_peer": "Expected connection source IPv4 address (router when using SNAT)"
+        }
+      }
+    },
+    "error": {
+      "invalid_config": "Check the fields. The purifier MAC address cannot be changed.",
+      "port_in_use": "Another purifier already uses this listener address and port."
+    }
+  },
+  "entity": {
+    "fan": {
+      "purifier": {"state_attributes": {"preset_mode": {"state": {"smart": "Smart", "sleep": "Sleep"}}}}
+    }
+  }
+}

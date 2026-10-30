@@ -139,6 +139,8 @@ class DeviceSession:
         self.writer = writer
         self.closed = False
         self.cloud_connected = False
+        self.cloud_bytes_received = 0
+        self.cloud_bytes_sent = 0
         self._stop = asyncio.Event()
         self._reset_cloud = asyncio.Event()
         self._outgoing = ByteQueue(self.config.queue_bytes)
@@ -322,6 +324,7 @@ class DeviceSession:
             async with asyncio.timeout(self.config.write_timeout):
                 writer.write(data)
                 await writer.drain()
+                self.cloud_bytes_sent += len(data)
 
     async def _cloud_reader(self, reader) -> None:
         frames = WireFramer()
@@ -334,6 +337,7 @@ class DeviceSession:
             if not data:
                 # A partial upstream command is never injected into the device stream.
                 return
+            self.cloud_bytes_received += len(data)
             for frame in frames.feed(data):
                 if len(frame) >= 6:
                     seq = int.from_bytes(frame[4:6], "big")

@@ -1,0 +1,12 @@
+{
+  "domain": "airproce_proxy",
+  "name": "AirProce Proxy",
+  "version": "0.1.0",
+  "config_flow": true,
+  "documentation": "https://github.com/Prushka/ha-airproce-proxy",
+  "issue_tracker": "https://github.com/Prushka/ha-airproce-proxy/issues",
+  "codeowners": ["@Prushka"],
+  "integration_type": "device",
+  "iot_class": "local_push",
+  "requirements": []
+}
