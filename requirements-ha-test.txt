@@ -1,0 +1,3 @@
+# Linux only. Never install these into the live Home Assistant environment.
+-r requirements-dev.txt
+homeassistant==2026.10.4
