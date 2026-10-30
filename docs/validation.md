@@ -1,9 +1,9 @@
 # Validation record
 
-Development is in progress. The owner confirmed live official app status and
-controls through the relay on both models. A stricter outage test exposed a
-remaining firmware startup/recovery dependency; deployment is still blocked
-on the fully local requirement described below.
+The owner confirmed live official app status and controls through the relay
+on both models. Offline startup/recovery now passes on both physical devices;
+the final cloud/app recheck after this change is in progress. This project has
+not been installed into the owner's running Home Assistant.
 
 ## Confirmed on physical devices, 2026-10-30
 
@@ -37,6 +37,11 @@ Wi-Fi configuration, module provisioning or factory-reset operation was sent.
   configuration validation, options validation, registry identity and reload.
 - Core tests also run on Windows/Python 3.14 without Home Assistant installed.
   HA-specific tests skip there. Ruff is run across the source and tests.
+- Offline recovery tests use peers that refuse to report state until they
+  receive valid registration/version replies. They cover fresh startup, device
+  reconnection, retained registration, timely/late cloud replies, silent cloud
+  sockets, bounded pending work and cleanup. Current Linux result: 32 passed;
+  Windows core result: 28 passed, HA module skipped. Ruff passes.
 
 No test installs this integration into the owner's running HA instance.
 
@@ -70,7 +75,7 @@ No test installs this integration into the owner's running HA instance.
     owner confirmed its app status and controls through the relay. App-issued
     manual speed, Auto and Sleep changes appeared in local state.
 
-## Offline startup/recovery issue (not resolved)
+## Offline startup/recovery fix
 
 The established AI-600 session survived the three-minute outage above, but that
 does not prove indefinite cloud independence. After an intentional device TCP
@@ -79,17 +84,33 @@ its connection without resuming valid status. An AI-370 outage also caused its
 own connection to reset after roughly two minutes, despite earlier successful
 local control during the outage.
 
-A read-only status query during startup did not resolve this. An isolated
-experiment using the observed registration acknowledgement restored AI-600
-status/control temporarily. Firmware-version request/reply handling remains
-unverified; modified replies did not establish stable recovery. None of that
-experimental emulation is included in the integration. No firmware image,
-provisioning, filter-reset or Wi-Fi-setting command was sent.
+A read-only status query during startup did not resolve this. Initial modified
+startup replies failed because their payload checksums were incorrect. Byte 6
+was identified as the XOR of all four CRC32 bytes over the payload. Corrected
+registration, installed-version and report acknowledgements restored offline
+startup without emulating weather or any unknown operation.
 
-Both purifiers subsequently returned to their original direct cloud routes;
-passive capture confirmed both powered on in Auto. All temporary test NAT
-tables, listeners and captures were stopped. The isolated test environment
-and private captures remain outside the running HA configuration and Git.
+Both physical units report firmware AI-7.3.5. With the final fallback code and
+the upstream deliberately set to an unused local port, both sent a fresh
+registration and resumed valid local status. No cloud bytes were sent or
+received. Local speed 3 and restoration to Auto passed on both. Each device's
+TCP connection was then deliberately closed while the upstream remained
+unavailable; both reconnected and resumed fresh status without cloud access.
+Local speed 3 and Auto passed again after those reconnects. The final test kept
+both upstreams unavailable for over eight minutes, including approximately
+four minutes after the forced device reconnect, with fresh status continuing
+and zero cloud bytes. Both stayed in Auto until forwarding was restored.
+
+First attachment took approximately three minutes through the firmware's
+existing retry/registration cycle. Later device reconnects took approximately
+one minute to resume valid reports. The integration retains the observed
+registration only in RAM across those reconnects, clearing it on unload.
+No firmware image, update URL, different firmware version, provisioning,
+filter-reset or Wi-Fi-setting command was sent.
+
+The isolated test environment and private captures remain outside the running
+HA configuration and Git. Final temporary-rule/listener cleanup is recorded
+after the app recheck below.
 
 The owner subsequently explicitly prohibited changes to or bypasses of
 OpenClash. All subsequent live tests use only source-specific purifier DNAT
@@ -98,8 +119,6 @@ overrides or running-HA configuration changes are part of this delivery.
 
 ## Remaining acceptance checks
 
-- Resolve and verify device startup/recovery without cloud access on both
-  models, including a sustained outage and a device TCP reconnect.
 - Recheck normal app forwarding after any protocol fallback changes.
 
 Optional PM10/filter-life readings remain unverified and are not exposed.

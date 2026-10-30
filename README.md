@@ -9,11 +9,10 @@ Local operation needs no AirProce account, app token, or cloud API. The relay
 opens an upstream TCP connection solely to carry existing device traffic. It
 does not contact `aph.airproce.com` or log into the cloud.
 
-**Development status:** local controls, isolated HA runtime tests, and official
-app forwarding pass on both tested models. Fully offline startup/recovery is
-not yet reliable: the purifier firmware can stop local communication while
-waiting for its startup exchange. Do not deploy until the remaining validation
-in [docs/validation.md](docs/validation.md) is complete.
+**Validation:** local controls, isolated HA runtime tests and fully offline
+registration/reconnection pass on both tested models. The final official-app
+recheck is recorded in [docs/validation.md](docs/validation.md). This build has
+not been deployed into the owner's running Home Assistant.
 
 ## Entities
 
@@ -53,7 +52,9 @@ report. Controls request fresh status immediately.
 4. Add the other purifier using a different listening port. Verify both local
    controls and the official app before retaining the routing changes.
 
-The listener port is opened by this integration, not by HA by default. Until
+The listener port is opened by this integration, not by HA by default. First
+attachment can take approximately three minutes while the purifier completes
+its registration cycle; later device reconnects can take about a minute. Until
 the redirected device connects, its entities remain unavailable. The listener
 binds only the explicitly configured IPv4 address and accepts only the expected
 peer IP. This plaintext device protocol has no local authentication: keep the
@@ -70,9 +71,13 @@ The device reader never waits for upstream connection or queue capacity.
 Cloud forwarding has a 256 KiB queue per purifier, bounded connection/write
 timeouts, and reconnects after a stall or overflow. Stale queued bytes are
 discarded when a cloud session fails. The relay keeps its local tasks responsive
-and cannot guarantee delivery of every cloud byte during an outage. The device
-firmware's own offline startup/recovery dependency remains unresolved; see the
-development status above.
+and cannot guarantee delivery of every cloud byte during an outage. If the
+cloud does not answer, the proxy supplies the three verified registration,
+installed-version and status acknowledgements needed for local recovery.
+It announces only the firmware version already reported by the purifier and
+does not send firmware images, update URLs, weather data or configuration.
+The observed device registration stays in memory until the integration unloads;
+no credentials are saved to disk.
 
 Normal cloud messages keep their content and correlation IDs. Replies to
 HA-generated queries are kept local; ordinary device reports continue to the
