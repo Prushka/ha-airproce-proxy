@@ -11,7 +11,12 @@ AI-370 and AI-600; this is not a claim about every AirProce firmware.
 The big-endian length word excludes the first seven bytes. The following
 two bytes identify the operation, and bytes 4–5 correlate requests/replies.
 Unknown operation payloads are forwarded without interpreting or rewriting
-them. Byte 6 and captured timestamps remain opaque in the command templates.
+them. Byte 6 is the XOR of all four bytes of CRC32 over the payload starting at
+byte 7. This matched all eleven captured local request templates and thirty
+distinct captured nonzero checksums, with no mismatches. Device-originated
+frames on the tested units commonly contain zero in that field. Timestamps in
+the captured control templates are retained; changing a preset's speed context
+requires recalculating its payload checksum.
 
 The module can first emit the literal text `AT+CIPSENDRAW` followed by a
 carriage return. This observed preamble is forwarded immediately and unchanged,

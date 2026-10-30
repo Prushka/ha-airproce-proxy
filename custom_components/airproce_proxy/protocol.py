@@ -8,6 +8,7 @@ Unrecognized bytes are never rewritten by the observation parser.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from zlib import crc32
 
 STATUS_QUERY = bytes.fromhex("000800040b97250000019fd0e781af")
 COMMANDS = {
@@ -26,6 +27,12 @@ REPORT = b"\x00\x1c\x00\x09"
 QUERY_REPLY = b"\x00\x1d\xff\xfc"
 CONTROL_REPLY = b"\x00\x09\xff\xf9"
 MAX_FRAME = 4096
+
+
+def payload_checksum(payload: bytes) -> int:
+    """Fold all four CRC32 bytes; matches captured controls and cloud replies."""
+    value = crc32(payload)
+    return (value ^ (value >> 8) ^ (value >> 16) ^ (value >> 24)) & 255
 
 
 @dataclass(frozen=True, slots=True)
@@ -141,6 +148,7 @@ def command(name: str, *, context_speed: int | None = None, sequence: int | None
         if type(context_speed) is not int or not 1 <= context_speed <= 6:
             raise ValueError("A current hardware speed from 1 to 6 is required")
         frame = frame[:15] + bytes([context_speed]) + frame[16:]
+        frame = frame[:6] + bytes([payload_checksum(frame[7:])]) + frame[7:]
     if sequence is not None:
         if not 0 <= sequence <= 65535:
             raise ValueError("Sequence must fit in two bytes")

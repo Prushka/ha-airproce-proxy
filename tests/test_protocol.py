@@ -9,6 +9,7 @@ from custom_components.airproce_proxy.protocol import (
     StateObserver,
     command,
     decode_state,
+    payload_checksum,
     query,
 )
 from custom_components.airproce_proxy.stream import ByteQueue, QueueFullError, WireFramer
@@ -84,6 +85,23 @@ def test_commands_and_correlation_have_bounded_supported_surface():
     for bad in (None, True, 0, 7):
         with pytest.raises(ValueError):
             command("auto", context_speed=bad)
+
+
+def test_checksum_matches_independently_captured_commands_and_cloud_replies():
+    replies = (
+        "000cffff000117c80a000841492d372e332e35",
+        "001cfefd000115c80a000001a18e631e98000001a18e631e98000841492d372e332e35",
+        "001cfefd000173c80a000001a18e8b20c8000001a18e8b20c8000841492d372e332e35",
+        "0009fff700012fc8000001a18e8b5390",
+        "0009fff700010ec8000001a18e8b8270",
+    )
+    for packet in (*COMMANDS.values(), *(bytes.fromhex(value) for value in replies)):
+        assert payload_checksum(packet[7:]) == packet[6]
+    for preset in ("auto", "sleep"):
+        changed = command(preset, context_speed=2)
+        assert changed[6] != COMMANDS[preset][6]
+        assert changed[6] == payload_checksum(changed[7:])
+        assert command(preset, context_speed=6) == COMMANDS[preset]
 
 
 async def test_cloud_queue_never_blocks_producer_and_accounts_for_bytes():
