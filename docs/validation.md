@@ -123,6 +123,13 @@ acceptance on both models. The test routes were rolled back and listeners
 stopped; do not treat a later app check on the original direct routes as proof
 of final-code relay behavior.
 
+Cleanup verification found only the original `inet fw4` and `inet dnsmasq`
+tables, unchanged policy-routing rules, no test listeners or captures, and
+both purifiers using their original upstream route. Passive packets on that
+route confirmed both powered on in Auto, speed 1. No OpenClash configuration,
+marks, routes or service state were changed, and nothing was installed into
+the running Home Assistant.
+
 The owner subsequently explicitly prohibited changes to or bypasses of
 OpenClash. All subsequent live tests use only source-specific purifier DNAT
 and the corresponding return-path SNAT. No persistent router rules, DNS
