@@ -50,8 +50,8 @@ async def ha(tmp_path, monkeypatch):
         assert (
             await bootstrap.async_from_config_dict(
                 {
-                "http": {"server_host": "127.0.0.1", "server_port": http_port},
-                "homeassistant": {
+                    "http": {"server_host": "127.0.0.1", "server_port": http_port},
+                    "homeassistant": {
                         "name": "Isolated AirProce test",
                         "latitude": 0,
                         "longitude": 0,
@@ -178,3 +178,37 @@ async def test_config_rejects_duplicates_invalid_addresses_and_occupied_ports(ha
         {**data, "mac": "02:00:00:00:00:02"},
     )
     assert duplicate_port["errors"] == {"base": "port_in_use"}
+
+
+async def test_options_validate_bind_before_replacing_working_listener(ha):
+    data = configuration()
+    flow = await ha.config_entries.flow.async_init("airproce_proxy", context={"source": "user"})
+    result = await ha.config_entries.flow.async_configure(flow["flow_id"], data)
+    entry = result["result"]
+    await ha.async_block_till_done()
+    original = entry.runtime_data.proxy
+    options = await ha.config_entries.options.async_init(entry.entry_id)
+    with socket.socket() as occupied:
+        occupied.bind(("127.0.0.1", 0))
+        occupied.listen()
+        invalid = await ha.config_entries.options.async_configure(
+            options["flow_id"],
+            {
+                **data,
+                "listen_port": occupied.getsockname()[1],
+            },
+        )
+        assert invalid["errors"] == {"base": "cannot_bind"}
+    assert entry.runtime_data.proxy is original and original.server is not None
+    assert entry.data["listen_port"] == data["listen_port"]
+    updated = await ha.config_entries.options.async_configure(
+        options["flow_id"],
+        {
+            **data,
+            "name": "Bedroom purifier",
+        },
+    )
+    assert updated["type"] == "create_entry"
+    await ha.async_block_till_done()
+    assert entry.title == "Bedroom purifier" and original.server is None
+    assert entry.runtime_data.proxy.server is not None

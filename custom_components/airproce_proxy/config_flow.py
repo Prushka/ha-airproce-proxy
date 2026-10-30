@@ -47,6 +47,13 @@ def schema(defaults=None):
     )
 
 
+def check_listener(data):
+    """Check only the local bind, including an address in TCP TIME_WAIT."""
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+        probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        probe.bind((data["listen_host"], data["listen_port"]))
+
+
 class AirProceProxyConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     VERSION = 1
 
@@ -70,8 +77,7 @@ class AirProceProxyConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     # Binding is local and immediate. Never require a cloud or
                     # purifier connection before the manual router rules exist.
                     try:
-                        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
-                            probe.bind((data["listen_host"], data["listen_port"]))
+                        check_listener(data)
                     except OSError:
                         errors["base"] = "cannot_bind"
                     else:
@@ -104,13 +110,22 @@ class AirProceProxyOptionsFlow(config_entries.OptionsFlow):
                 ):
                     errors["base"] = "port_in_use"
                 else:
-                    self.hass.config_entries.async_update_entry(
-                        self.config_entry,
-                        title=data["name"],
-                        data=data,
-                    )
-                    await self.hass.config_entries.async_reload(self.config_entry.entry_id)
-                    return self.async_create_entry(title="", data={})
+                    try:
+                        if any(
+                            data[key] != self.config_entry.data[key]
+                            for key in ("listen_host", "listen_port")
+                        ):
+                            check_listener(data)
+                    except OSError:
+                        errors["base"] = "cannot_bind"
+                    else:
+                        self.hass.config_entries.async_update_entry(
+                            self.config_entry,
+                            title=data["name"],
+                            data=data,
+                        )
+                        await self.hass.config_entries.async_reload(self.config_entry.entry_id)
+                        return self.async_create_entry(title="", data={})
         return self.async_show_form(
             step_id="init",
             data_schema=schema(user_input or self.config_entry.data),

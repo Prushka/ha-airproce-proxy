@@ -41,6 +41,7 @@
     },
     "error": {
       "invalid_config": "Check the fields. The purifier MAC address cannot be changed.",
+      "cannot_bind": "Home Assistant cannot listen on the new address and port. The previous configuration has been kept.",
       "port_in_use": "Another purifier already uses this listener address and port."
     }
   },
