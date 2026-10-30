@@ -12,6 +12,7 @@ from contextlib import suppress
 from dataclasses import dataclass
 
 from .protocol import DeviceState, StateObserver, command, matches, query
+from .recovery import answered_operation, recovery_reply, recovery_request
 from .stream import ByteQueue, QueueFullError, WireFramer, response_sequence
 
 _LOGGER = logging.getLogger(__name__)
@@ -35,6 +36,7 @@ class ProxyConfig:
     stale_after: float = 150
     queue_bytes: int = 262144
     retry_delay: float = 2
+    acknowledgement_timeout: float = 1
 
 
 class ControlError(Exception):
@@ -60,6 +62,8 @@ class PurifierProxy:
         self.server: asyncio.Server | None = None
         self._tasks: set[asyncio.Task] = set()
         self._closing = False
+        # Retain only in RAM across device TCP reconnects, until integration unload.
+        self._registration: bytes | None = None
 
     @property
     def available(self) -> bool:
@@ -129,6 +133,7 @@ class PurifierProxy:
             await server.wait_closed()
         self._tasks.clear()
         self.session = None
+        self._registration = None
 
 
 class DeviceSession:
@@ -144,9 +149,9 @@ class DeviceSession:
         self.cloud_registered = False
         self.cloud_bytes_received = 0
         self.cloud_bytes_sent = 0
-        # Only the device's own observed registration, retained in RAM for this
-        # device session. Never synthesize credentials or persist this payload.
-        self._registration: bytes | None = None
+        # Only the device's own observed registration. Never synthesize
+        # credentials or persist this payload outside this integration's RAM.
+        self._registration = owner._registration
         self._stop = asyncio.Event()
         self._ready = asyncio.Event()
         self._reset_cloud = asyncio.Event()
@@ -158,6 +163,9 @@ class DeviceSession:
         self._pending: dict[int, asyncio.Future[DeviceState]] = {}
         self._owned: dict[int, float] = {}
         self._cloud_ids: dict[int, float] = {}
+        # At most one pending acknowledgement per known operation (three total).
+        self._acknowledgements: dict[int, tuple[float, bytes]] = {}
+        self._acknowledgements_changed = asyncio.Event()
         self._sequence = 0xD000 + secrets.randbelow(0x3000)
 
     def stop(self) -> None:
@@ -171,6 +179,7 @@ class DeviceSession:
                 self._device_reader,
                 self._cloud_manager,
                 self._poll,
+                self._recover,
                 self._stop.wait,
             )
         ]
@@ -274,6 +283,26 @@ class DeviceSession:
             self._outgoing.clear()
             self._reset_cloud.set()
 
+    async def _recover(self) -> None:
+        """Bound the firmware's wait for cloud startup/status acknowledgements."""
+        while not self.closed:
+            self._acknowledgements_changed.clear()
+            if not self._acknowledgements:
+                await self._acknowledgements_changed.wait()
+                continue
+            opcode = min(self._acknowledgements, key=lambda op: self._acknowledgements[op][0])
+            deadline, _ = self._acknowledgements[opcode]
+            delay = deadline - time.monotonic()
+            if delay > 0:
+                with suppress(TimeoutError):
+                    async with asyncio.timeout(delay):
+                        await self._acknowledgements_changed.wait()
+                continue
+            # The cloud may answer while we wait for a local query to finish.
+            async with self._transaction_lock:
+                if (pending := self._acknowledgements.pop(opcode, None)) is not None:
+                    await self._send(recovery_reply(opcode, pending[1], int(time.time()) * 1000))
+
     async def _device_reader(self) -> None:
         observer, frames = StateObserver(), WireFramer(module_preamble=True)
         while not self.closed:
@@ -297,6 +326,17 @@ class DeviceSession:
                 if pending is not None and not pending.done():
                     pending.set_result(report.state)
             for frame in frames.feed(data):
+                if (request := recovery_request(frame)) is not None:
+                    opcode, firmware = request
+                    # On first attachment, let firmware finish its natural
+                    # registration cycle. Answering version retries before any
+                    # registration can prevent it ever identifying to the cloud.
+                    if opcode != 0x103 or self._registration is not None:
+                        self._acknowledgements.setdefault(
+                            opcode,
+                            (time.monotonic() + self.config.acknowledgement_timeout, firmware),
+                        )
+                        self._acknowledgements_changed.set()
                 if (
                     40 <= len(frame) <= 4096
                     and frame[2:4] == b"\x00\x01"
@@ -304,12 +344,13 @@ class DeviceSession:
                     and frame[10:16] in (b"AI-370", b"AI-600")
                 ):
                     self._registration = frame
+                    self.owner._registration = frame
                 seq = response_sequence(frame)
                 if seq is None or self._owned.get(seq, 0) <= time.monotonic():
                     self._forward(frame)
 
     async def _cloud_manager(self) -> None:
-        first_attempt = True
+        first_attempt = self._registration is None
         while not self.closed:
             writer = None
             tasks = []
@@ -375,6 +416,9 @@ class DeviceSession:
                 return
             self.cloud_bytes_received += len(data)
             for frame in frames.feed(data):
+                if (opcode := answered_operation(frame)) is not None:
+                    self._acknowledgements.pop(opcode, None)
+                    self._acknowledgements_changed.set()
                 if len(frame) >= 8 and frame[2:4] == b"\xff\xff":
                     self.cloud_registered = frame[7] == 200
                     self.owner.changed()

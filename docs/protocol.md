@@ -73,10 +73,34 @@ two minutes before the device opened a new connection and sent operation
 authenticator. A `ffff` cloud response with status byte 200 confirmed it.
 
 The relay forwards the device's registration without generating credentials.
-For reconnects of the upstream within the same device session, it retains that
-one observed frame in RAM and replays it before subsequent device traffic.
+For upstream and device TCP reconnects, it retains that one observed frame in
+RAM for the lifetime of the integration entry and replays it before subsequent
+device traffic. Unloading the entry clears it; it is never saved to disk.
 It never writes the authenticator to configuration, diagnostics, or logs.
 Live replay validation is tracked separately in `validation.md`.
+
+Three known acknowledgements can be answered locally if the cloud has not
+answered within one second (plus any bounded local query already in progress):
+
+| Device request | Local fallback | Contents |
+| --- | --- | --- |
+| `0001`, registration for AI-370/AI-600 | `ffff` | Success and the device's own installed firmware string |
+| `0103`, firmware version check | `fefd` | Success, current UTC milliseconds twice, same installed firmware string |
+| `0009`, validated status report | `fff7` | Success and current UTC milliseconds |
+
+These use the observed server correlation ID `0001`, whole-second timestamps,
+and a recalculated folded CRC32. No firmware image, update URL or different
+version is supplied. Weather and unknown requests are not emulated. The
+pending work is bounded to three operations; retries do not postpone an
+existing deadline. A timely checksummed cloud reply cancels its fallback.
+Late cloud replies are still forwarded unchanged, as are the original requests.
+
+On first attachment, version retries are allowed to finish the device's
+natural registration cycle before version fallback is enabled. Otherwise a
+device can stay locally responsive without ever identifying itself to the
+upstream server. First attachment or an HA restart can therefore take a few
+minutes. Once observed, the registration remains available across device TCP
+reconnects without needing any cloud response or account login.
 
 Cloud weather/configuration replies and other unknown operations are passed
 through unchanged. Registration exposes a firmware string; other messages
