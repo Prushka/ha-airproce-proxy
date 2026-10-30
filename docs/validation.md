@@ -1,8 +1,9 @@
 # Validation record
 
-Development is in progress. Passing simulated and HA runtime tests does not
-establish that the official cloud/app path works. Live cloud recovery remains
-an acceptance requirement before deployment.
+Development is in progress. The owner confirmed live official app status and
+controls through the relay on both models. A stricter outage test exposed a
+remaining firmware startup/recovery dependency; deployment is still blocked
+on the fully local requirement described below.
 
 ## Confirmed on physical devices, 2026-10-30
 
@@ -65,6 +66,30 @@ No test installs this integration into the owner's running HA instance.
    without a device TCP reconnect. Cloud registration recovered afterward.
 9. A separate AI-600 test started with the upstream unavailable. Local speed 3
    and restoration to Auto both succeeded with zero cloud bytes sent/received.
+10. Final-code AI-370 local speed control passed and Auto was restored. The
+    owner confirmed its app status and controls through the relay. App-issued
+    manual speed, Auto and Sleep changes appeared in local state.
+
+## Offline startup/recovery issue (not resolved)
+
+The established AI-600 session survived the three-minute outage above, but that
+does not prove indefinite cloud independence. After an intentional device TCP
+reconnect without upstream access, the AI-600 repeatedly registered and reset
+its connection without resuming valid status. An AI-370 outage also caused its
+own connection to reset after roughly two minutes, despite earlier successful
+local control during the outage.
+
+A read-only status query during startup did not resolve this. An isolated
+experiment using the observed registration acknowledgement restored AI-600
+status/control temporarily. Firmware-version request/reply handling remains
+unverified; modified replies did not establish stable recovery. None of that
+experimental emulation is included in the integration. No firmware image,
+provisioning, filter-reset or Wi-Fi-setting command was sent.
+
+Both purifiers subsequently returned to their original direct cloud routes;
+passive capture confirmed both powered on in Auto. All temporary test NAT
+tables, listeners and captures were stopped. The isolated test environment
+and private captures remain outside the running HA configuration and Git.
 
 The owner subsequently explicitly prohibited changes to or bypasses of
 OpenClash. All subsequent live tests use only source-specific purifier DNAT
@@ -73,10 +98,8 @@ overrides or running-HA configuration changes are part of this delivery.
 
 ## Remaining acceptance checks
 
-- Final-code app/local-control acceptance on AI-370 (AI-600 confirmed).
-- Sustained local operation during a cloud outage, including the device's own
-  recovery behavior, rather than only a short simulated outage.
-- Final removal of all temporary rules/listeners/captures and confirmation of
-  the original cloud route after live tests.
+- Resolve and verify device startup/recovery without cloud access on both
+  models, including a sustained outage and a device TCP reconnect.
+- Recheck normal app forwarding after any protocol fallback changes.
 
 Optional PM10/filter-life readings remain unverified and are not exposed.

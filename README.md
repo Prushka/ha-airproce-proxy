@@ -9,9 +9,11 @@ Local operation needs no AirProce account, app token, or cloud API. The relay
 opens an upstream TCP connection solely to carry existing device traffic. It
 does not contact `aph.airproce.com` or log into the cloud.
 
-**Development status:** local controls and isolated HA runtime tests pass.
-Live cloud forwarding is still under investigation. Do not deploy until the
-remaining validation in [docs/validation.md](docs/validation.md) is complete.
+**Development status:** local controls, isolated HA runtime tests, and official
+app forwarding pass on both tested models. Fully offline startup/recovery is
+not yet reliable: the purifier firmware can stop local communication while
+waiting for its startup exchange. Do not deploy until the remaining validation
+in [docs/validation.md](docs/validation.md) is complete.
 
 ## Entities
 
@@ -67,8 +69,10 @@ direct path. The integration cannot repair router configuration automatically.
 The device reader never waits for upstream connection or queue capacity.
 Cloud forwarding has a 256 KiB queue per purifier, bounded connection/write
 timeouts, and reconnects after a stall or overflow. Stale queued bytes are
-discarded when a cloud session fails. Thus local control stays responsive, but
-the relay cannot guarantee delivery of every cloud byte during an outage.
+discarded when a cloud session fails. The relay keeps its local tasks responsive
+and cannot guarantee delivery of every cloud byte during an outage. The device
+firmware's own offline startup/recovery dependency remains unresolved; see the
+development status above.
 
 Normal cloud messages keep their content and correlation IDs. Replies to
 HA-generated queries are kept local; ordinary device reports continue to the
