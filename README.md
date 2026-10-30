@@ -35,6 +35,9 @@ PM10, filter life, and other unknown status bytes are not exposed.
 Controls use a fresh local query to confirm the result. A successful write to a
 socket is not treated as successful control. Local availability depends on the
 device connection and recent validated status, independently of cloud state.
+The tested devices send periodic reports approximately every 64 seconds; the
+integration also queries local status every 30 seconds after the first valid
+report. Controls request fresh status immediately.
 
 ## Installation, when ready
 
@@ -85,3 +88,7 @@ For real HA tests, use an isolated Linux environment and additionally install
 `requirements-ha-test.txt`. These tests create their own HA config directories
 and loopback listeners; they do not use a running HA installation or real cloud.
 See [protocol notes](docs/protocol.md) and [validation](docs/validation.md).
+
+Run `python scripts/build.py` to create `dist/ha-airproce-proxy-0.1.0.zip`.
+The archive contains only the integration and license notices. Private test
+captures, configuration, and development environments are excluded.

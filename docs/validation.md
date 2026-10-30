@@ -55,6 +55,16 @@ No test installs this integration into the owner's running HA instance.
    The AI-370 exposed a command-readback timeout. After bounded confirmation
    retries and query/reply serialization were added, AI-600 local speed control
    and restoration to Auto passed with its cloud session still registered.
+6. The owner confirmed that AI-600 official app status and controls work
+   through the corrected relay. App-issued manual speed and preset changes
+   were also observed in the proxy's live local state.
+7. An intentional AI-600 upstream reconnect retained the same device TCP
+   session. Local speed control succeeded during reconnect, Auto was restored,
+   and the cloud accepted the replayed device registration.
+8. During a 180-second AI-600 upstream outage, fresh local status continued
+   without a device TCP reconnect. Cloud registration recovered afterward.
+9. A separate AI-600 test started with the upstream unavailable. Local speed 3
+   and restoration to Auto both succeeded with zero cloud bytes sent/received.
 
 The owner subsequently explicitly prohibited changes to or bypasses of
 OpenClash. All subsequent live tests use only source-specific purifier DNAT
@@ -63,8 +73,7 @@ overrides or running-HA configuration changes are part of this delivery.
 
 ## Remaining acceptance checks
 
-- Official app status and controls through the final relay on both models.
-- Registration replay on a real upstream reconnection.
+- Final-code app/local-control acceptance on AI-370 (AI-600 confirmed).
 - Sustained local operation during a cloud outage, including the device's own
   recovery behavior, rather than only a short simulated outage.
 - Final removal of all temporary rules/listeners/captures and confirmation of
