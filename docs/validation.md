@@ -1,10 +1,10 @@
 # Validation record
 
-The owner confirmed live official app status and controls through the relay
-on both models. Offline startup/recovery now passes on both physical devices;
-cloud reconnection also passes, but the final app recheck awaits the owner.
-This project has
-not been installed into the owner's running Home Assistant.
+Build and test acceptance is complete for the two tested physical devices.
+The owner confirmed final-code official app status and controls through the
+relay on both models on 2026-10-31. Offline startup/recovery and cloud
+reconnection also pass. This project has not been installed into the owner's
+running Home Assistant.
 
 ## Confirmed on physical devices, 2026-10-30
 
@@ -116,12 +116,8 @@ No firmware image, update URL, different firmware version, provisioning,
 filter-reset or Wi-Fi-setting command was sent.
 
 The isolated test environment and private captures remain outside the running
-HA configuration and Git. The final app check was requested while both relay
-sessions were registered. No reply arrived during that temporary test window,
-so final-code app status/control is still pending, despite the earlier app
-acceptance on both models. The test routes were rolled back and listeners
-stopped; do not treat a later app check on the original direct routes as proof
-of final-code relay behavior.
+HA configuration and Git. The earlier offline test's temporary routes and
+listeners were removed before the separate final app acceptance test below.
 
 Cleanup verification found only the original `inet fw4` and `inet dnsmasq`
 tables, unchanged policy-routing rules, no test listeners or captures, and
@@ -135,10 +131,35 @@ OpenClash. All subsequent live tests use only source-specific purifier DNAT
 and the corresponding return-path SNAT. No persistent router rules, DNS
 overrides or running-HA configuration changes are part of this delivery.
 
-## Remaining acceptance checks
+## Final app acceptance, 2026-10-31
 
-- Repeat a temporary final-code relay test when the owner can check live app
-  status and speed 3 → Auto on both models. Earlier app acceptance and final
-  cloud registration/recovery are confirmed, but they are separate evidence.
+A fresh read-only router audit verified both MAC/IP mappings, the current
+cloud destination, existing OpenClash policy and unused HA test ports. The
+final committed integration ran in the isolated Linux test environment with
+the normal cloud relay enabled. Each purifier used its own temporary DNAT/SNAT
+table with timed cleanup; no unrelated rule or OpenClash setting was changed.
+
+Both sessions registered with the cloud and passed local speed 2 → Auto before
+the owner started the app test. The owner then confirmed live status and these
+app controls while both temporary relay routes were still active:
+
+| Model | App-issued sequence | Independent local observation |
+| --- | --- | --- |
+| AI-370 | Speed 3 → speed 6 → Smart | Manual 3, manual 6 and Auto appeared in fresh local state |
+| AI-600 | Speed 5 → Smart | Manual 5 and Auto appeared in fresh local state |
+
+Both cloud sessions remained registered through the commands. Both purifiers
+settled in Auto, speed 1. This completes the final app acceptance after the
+offline-recovery changes; it is not inferred from the earlier build's tests.
+
+After confirmation, both task-owned NAT tables and listeners were removed.
+Connection tracking showed both devices back on their original cloud routes;
+passive packets independently confirmed both powered on in Auto, speed 1.
+Only the original router tables remained and policy-routing rules were
+unchanged. The running HA was left intact, with no persistent deployment.
+
+## Scope
 
 Optional PM10/filter-life readings remain unverified and are not exposed.
+Deployment into the running Home Assistant and persistent router setup remain
+separate actions requiring the owner's deployment instruction.

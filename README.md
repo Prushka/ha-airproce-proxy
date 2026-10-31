@@ -9,9 +9,9 @@ Local operation needs no AirProce account, app token, or cloud API. The relay
 opens an upstream TCP connection solely to carry existing device traffic. It
 does not contact `aph.airproce.com` or log into the cloud.
 
-**Validation:** local controls, isolated HA runtime tests and fully offline
-registration/reconnection pass on both tested models. The final official-app
-recheck is recorded in [docs/validation.md](docs/validation.md). This build has
+**Validation:** local controls, isolated HA runtime tests, fully offline
+registration/reconnection and final official-app status/control all pass on
+both tested models. See [docs/validation.md](docs/validation.md). This build has
 not been deployed into the owner's running Home Assistant.
 
 ## Entities
