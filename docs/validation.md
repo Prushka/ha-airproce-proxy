@@ -161,5 +161,6 @@ unchanged. The running HA was left intact, with no persistent deployment.
 ## Scope
 
 Optional PM10/filter-life readings remain unverified and are not exposed.
-Deployment into the running Home Assistant and persistent router setup remain
-separate actions requiring the owner's deployment instruction.
+Deployment into a running Home Assistant and persistent router setup require
+the owner's explicit instruction. The subsequent authorized installation is
+recorded separately in [deployment-20261031.md](deployment-20261031.md).

@@ -11,8 +11,9 @@ does not contact `aph.airproce.com` or log into the cloud.
 
 **Validation:** local controls, isolated HA runtime tests, fully offline
 registration/reconnection and final official-app status/control all pass on
-both tested models. See [docs/validation.md](docs/validation.md). This build has
-not been deployed into the owner's running Home Assistant.
+both tested models. See [docs/validation.md](docs/validation.md). The owner's
+authorized HA installation and exact router rules are recorded in
+[docs/deployment-20261031.md](docs/deployment-20261031.md).
 
 ## Entities
 
@@ -40,7 +41,7 @@ The tested devices send periodic reports approximately every 64 seconds; the
 integration also queries local status every 30 seconds after the first valid
 report. Controls request fresh status immediately.
 
-## Installation, when ready
+## Installation
 
 1. Copy `custom_components/airproce_proxy` into your HA configuration's
    `custom_components` directory and restart HA.
