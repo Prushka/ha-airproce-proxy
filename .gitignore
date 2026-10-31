@@ -5,3 +5,22 @@ __pycache__/
 *.pyc
 test-artifacts/
 dist/
+
+# Local editor, authentication, Home Assistant and investigation artifacts.
+.idea/
+.vscode/
+.env
+.env.*
+.ssh/
+.storage/
+secrets.yaml
+configuration.yaml
+*.log
+*.pcap
+*.pcapng
+*.cap
+*.har
+*.pem
+*.key
+*.p12
+*.pfx

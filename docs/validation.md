@@ -1,12 +1,15 @@
 # Validation record
 
-Build and test acceptance is complete for the two tested physical devices.
-The owner confirmed final-code official app status and controls through the
-relay on both models on 2026-10-31. Offline startup/recovery and cloud
-reconnection also pass. This project has not been installed into the owner's
-running Home Assistant.
+Local status/control, fully offline startup/recovery, cloud reconnection and
+official-app status/control passed on physical AI-370 and AI-600 units running
+AI-7.3.5. Deployment into Home Assistant 2026.10.4 also passed. These results
+describe the tested models and firmware, not every AirProce device.
 
-## Confirmed on physical devices, 2026-10-30
+This public record contains reusable technical findings. Device identities,
+addresses, deployment rules, private captures and individual installation
+records are deliberately excluded.
+
+## Confirmed on physical devices
 
 | Operation | AI-370 | AI-600 |
 | --- | --- | --- |
@@ -16,11 +19,17 @@ running Home Assistant.
 | Power off and on | Confirmed | Confirmed |
 | Temperature, humidity, PM2.5, VOC, fan state | Read successfully | Read successfully |
 | Correlation ID changes on queries/controls | Confirmed | Confirmed |
+| Official-app status and controls through the relay | Confirmed | Confirmed |
+| Offline startup and device reconnection | Confirmed | Confirmed |
 
-The control matrix required two fresh matching query replies per operation.
-Both purifiers were restored to Auto. Power-off exposed raw state `(255, 0x12)`
-on both units, which the older integration did not decode. No filter reset,
-Wi-Fi configuration, module provisioning or factory-reset operation was sent.
+The full control matrix required two fresh matching query replies per
+operation. Purifiers were restored to Auto after testing. No filter reset,
+Wi-Fi configuration, module provisioning, factory reset or firmware update
+was performed.
+
+Power-off exposed raw state `(255, 0x12)` on both units, which the older
+integration did not decode. Optional PM10/filter-life readings remain
+unverified and are not exposed.
 
 ## Automated tests
 
@@ -30,8 +39,8 @@ Wi-Fi configuration, module provisioning or factory-reset operation was sent.
   failed-command reporting, peer rejection, connection replacement and cleanup.
 - Startup tests require passive device readiness before any local query.
 - Synthetic device registration tests verify framing through the observed
-  `AT+CIPSENDRAW` preamble and replay on an upstream reconnect. All credentials
-  in those tests are synthetic.
+  `AT+CIPSENDRAW` preamble and replay on an upstream reconnect. Test identities
+  and authentication fields are synthetic; no live registration is included.
 - Home Assistant 2026.10.4 runs on Linux in a dedicated test environment, with
   temporary HA configuration directories and loopback HTTP/TCP ports. Tests
   cover both models, five entities, real fan services, sensor units/readings,
@@ -41,126 +50,49 @@ Wi-Fi configuration, module provisioning or factory-reset operation was sent.
 - Offline recovery tests use peers that refuse to report state until they
   receive valid registration/version replies. They cover fresh startup, device
   reconnection, retained registration, timely/late cloud replies, silent cloud
-  sockets, bounded pending work and cleanup. Current Linux result: 32 passed;
-  Windows core result: 28 passed, HA module skipped. Ruff passes.
+  sockets, bounded pending work and cleanup.
 
-No test installs this integration into the owner's running HA instance.
+Recorded results: Linux 32 passed; Windows core 28 passed with the HA module
+skipped; Ruff passed. Automated tests do not install into a running HA instance.
 
-## Findings that required additional live testing
+## Protocol findings and failure recovery
 
-1. Short relay tests initially showed local control but no official app
-   updates. The upstream TCP socket was connected but not registered.
-2. A router reboot and concurrent changes by a different agent overlapped
-   early tests. Those results cannot establish the final network behavior.
-3. A later stable-network capture showed firmware retries for approximately
-   two minutes, followed by a new connection and a device registration frame.
-   A normal cloud reply accepted that registration.
-4. Immediate local queries during new connections coincided with failed
-   startup and module-command text in the TCP stream. Local polling now waits
-   for a validated device report. Preamble bytes are preserved, not discarded.
-5. Stable live tests established registered cloud sessions on both models.
-   The AI-370 exposed a command-readback timeout. After bounded confirmation
-   retries and query/reply serialization were added, AI-600 local speed control
-   and restoration to Auto passed with its cloud session still registered.
-6. The owner confirmed that AI-600 official app status and controls work
-   through the corrected relay. App-issued manual speed and preset changes
-   were also observed in the proxy's live local state.
-7. An intentional AI-600 upstream reconnect retained the same device TCP
-   session. Local speed control succeeded during reconnect, Auto was restored,
-   and the cloud accepted the replayed device registration.
-8. During a 180-second AI-600 upstream outage, fresh local status continued
-   without a device TCP reconnect. Cloud registration recovered afterward.
-9. A separate AI-600 test started with the upstream unavailable. Local speed 3
-   and restoration to Auto both succeeded with zero cloud bytes sent/received.
-10. Final-code AI-370 local speed control passed and Auto was restored. The
-    owner confirmed its app status and controls through the relay. App-issued
-    manual speed, Auto and Sleep changes appeared in local state.
+Short relay tests initially showed local control while the official app was
+stale. A connected upstream TCP socket was insufficient: a real device
+registration had to be accepted by the cloud. The tested firmware could retry
+for several minutes before opening a fresh connection and registering.
 
-## Offline startup/recovery fix
+Immediate local queries during startup could interfere with initialization.
+Local polling now waits for a validated device report. Module preamble bytes
+are forwarded immediately. Query/reply serialization and bounded confirmation
+retries resolved a command-readback timeout while preserving cloud frames.
 
-The established AI-600 session survived the three-minute outage above, but that
-does not prove indefinite cloud independence. After an intentional device TCP
-reconnect without upstream access, the AI-600 repeatedly registered and reset
-its connection without resuming valid status. An AI-370 outage also caused its
-own connection to reset after roughly two minutes, despite earlier successful
-local control during the outage.
+Short cloud outages did not establish fully offline recovery. After a device
+reconnect without upstream access, the firmware waited for startup replies and
+repeatedly reset its connection. Correct local acknowledgements require a
+checksum formed by XOR-folding all four CRC32 bytes over the payload.
 
-A read-only status query during startup did not resolve this. Initial modified
-startup replies failed because their payload checksums were incorrect. Byte 6
-was identified as the XOR of all four CRC32 bytes over the payload. Corrected
-registration, installed-version and report acknowledgements restored offline
-startup without emulating weather or any unknown operation.
+Only the three verified registration, installed-version and status
+acknowledgements are supplied locally after a bounded cloud-response timeout.
+On first attachment, status/version fallback waits until registration is
+observed; acknowledging reports too early could prevent cloud identification.
+The version reply announces only the firmware already installed on the device.
 
-Both physical units report firmware AI-7.3.5. With the final fallback code and
-the upstream deliberately set to an unused local port, both sent a fresh
-registration and resumed valid local status. No cloud bytes were sent or
-received. Local speed 3 and restoration to Auto passed on both. Each device's
-TCP connection was then deliberately closed while the upstream remained
-unavailable; both reconnected and resumed fresh status without cloud access.
-Local speed 3 and Auto passed again after those reconnects. The final test kept
-both upstreams unavailable for over eight minutes, including approximately
-four minutes after the forced device reconnect, with fresh status continuing
-and zero cloud bytes. Both stayed in Auto until forwarding was restored.
-Specifically, the AI-370 had 513 seconds and the AI-600 had 521 seconds of
-recorded offline operation. After restoring forwarding, both cloud sessions
-accepted the retained registration within the next five-second observation
-interval, without a device reconnect. Local speed 2 and Auto also passed with
-the cloud connected. A subsequent idle cloud timeout/reconnect recovered while
-local status remained available on the same device connections.
+Both models then passed extended offline operation for more than eight minutes,
+including fresh registration and forced device reconnection, with current local
+status and speed/Auto controls. Restoring forwarding recovered cloud
+registration without requiring another device reconnect. Idle cloud
+timeout/reconnect was also observed to recover while local state stayed
+available on the same device connection.
 
-First attachment took approximately three minutes through the firmware's
-existing retry/registration cycle. Later device reconnects took approximately
-one minute to resume valid reports. The integration retains the observed
-registration only in RAM across those reconnects, clearing it on unload.
-No firmware image, update URL, different firmware version, provisioning,
-filter-reset or Wi-Fi-setting command was sent.
+The final build passed official-app live status, manual speeds and Smart mode
+on both models, with corresponding changes independently observed in local
+state. HA deployment checks confirmed five entities per device, live sensors,
+HA manual speed control and restoration to Smart, plus official-app control.
 
-The isolated test environment and private captures remain outside the running
-HA configuration and Git. The earlier offline test's temporary routes and
-listeners were removed before the separate final app acceptance test below.
+## Deployment boundary
 
-Cleanup verification found only the original `inet fw4` and `inet dnsmasq`
-tables, unchanged policy-routing rules, no test listeners or captures, and
-both purifiers using their original upstream route. Passive packets on that
-route confirmed both powered on in Auto, speed 1. No OpenClash configuration,
-marks, routes or service state were changed, and nothing was installed into
-the running Home Assistant.
-
-The owner subsequently explicitly prohibited changes to or bypasses of
-OpenClash. All subsequent live tests use only source-specific purifier DNAT
-and the corresponding return-path SNAT. No persistent router rules, DNS
-overrides or running-HA configuration changes are part of this delivery.
-
-## Final app acceptance, 2026-10-31
-
-A fresh read-only router audit verified both MAC/IP mappings, the current
-cloud destination, existing OpenClash policy and unused HA test ports. The
-final committed integration ran in the isolated Linux test environment with
-the normal cloud relay enabled. Each purifier used its own temporary DNAT/SNAT
-table with timed cleanup; no unrelated rule or OpenClash setting was changed.
-
-Both sessions registered with the cloud and passed local speed 2 → Auto before
-the owner started the app test. The owner then confirmed live status and these
-app controls while both temporary relay routes were still active:
-
-| Model | App-issued sequence | Independent local observation |
-| --- | --- | --- |
-| AI-370 | Speed 3 → speed 6 → Smart | Manual 3, manual 6 and Auto appeared in fresh local state |
-| AI-600 | Speed 5 → Smart | Manual 5 and Auto appeared in fresh local state |
-
-Both cloud sessions remained registered through the commands. Both purifiers
-settled in Auto, speed 1. This completes the final app acceptance after the
-offline-recovery changes; it is not inferred from the earlier build's tests.
-
-After confirmation, both task-owned NAT tables and listeners were removed.
-Connection tracking showed both devices back on their original cloud routes;
-passive packets independently confirmed both powered on in Auto, speed 1.
-Only the original router tables remained and policy-routing rules were
-unchanged. The running HA was left intact, with no persistent deployment.
-
-## Scope
-
-Optional PM10/filter-life readings remain unverified and are not exposed.
-Deployment into a running Home Assistant and persistent router setup require
-the owner's explicit instruction. The subsequent authorized installation is
-recorded separately in [deployment-20261031.md](deployment-20261031.md).
+Each deployment requires a new manual audit and explicit authorization under
+`AGENTS.md` and [router-setup.md](router-setup.md). Test results do not authorize
+changes to any other installation. Private before/after router snapshots and
+exact deployment/rollback records must stay outside tracked files.

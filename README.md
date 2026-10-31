@@ -11,9 +11,10 @@ does not contact `aph.airproce.com` or log into the cloud.
 
 **Validation:** local controls, isolated HA runtime tests, fully offline
 registration/reconnection and final official-app status/control all pass on
-both tested models. See [docs/validation.md](docs/validation.md). The owner's
-authorized HA installation and exact router rules are recorded in
-[docs/deployment-20261031.md](docs/deployment-20261031.md).
+both tested models, including deployment into Home Assistant. See the
+anonymized [validation record](docs/validation.md). Private deployment details
+are not part of this public repository; use the
+[manual router review guide](docs/router-setup.md) for your own network.
 
 ## Entities
 

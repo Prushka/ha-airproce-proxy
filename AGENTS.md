@@ -5,6 +5,46 @@ requested a local Home Assistant integration with transparent forwarding of the
 purifiers' existing cloud traffic. Cloud login, account APIs, filter reset,
 provisioning, and unrelated device controls are outside scope.
 
+## Public repository: never commit secrets or private deployment information
+
+Treat every tracked file, commit message, commit author/committer field, branch,
+tag, release archive, screenshot and published log as public. Permission to
+inspect a device or deploy locally is not permission to publish its details.
+
+- Never commit passwords, API keys, access/refresh tokens, cookies, SSH/private
+  keys, Wi-Fi credentials, cloud account data, or device authenticators. AirProce
+  registration frames contain identifiers and authentication material: do not
+  copy live frames into source, fixtures, documentation, diagnostics or logs.
+- Never commit a user's real LAN/public IPs, MAC addresses, device serials,
+  private domains/hostnames, SSH usernames, personal email/name, absolute local
+  paths, HA configuration/registries/backups, router rulesets, deployment
+  receipts, packet captures, HAR files, screenshots or private conversations.
+  Document reusable setup concepts and anonymized validation results instead.
+- Use synthetic identities and documentation-only addresses such as
+  `192.0.2.10`, `198.51.100.20`, `example.com` and `02:00:00:00:00:01` in
+  examples. Tests should use loopback networking and synthetic or carefully
+  sanitized fixtures. Inspect binary/hex payloads for embedded identifiers,
+  credentials and identifying metadata; encoding is not redaction.
+- Public vendor endpoints, approved public repository/account identifiers and
+  required upstream license attribution may remain. Do not remove copyright
+  notices or mistake an ordinary package checksum for a credential.
+- Keep necessary private investigation/deployment records only in ignored local
+  `test-artifacts/` (or an explicitly private location outside the repository).
+  Do not force-add ignored files. `.gitignore` does not protect already tracked
+  files or historical commits. Release builds must use an explicit file list.
+- Before each commit, review the exact staged filenames and diff for private
+  data and secrets, including generated files and IDE metadata. Check the Git
+  author/committer identity; use the approved public handle and GitHub noreply
+  address. Do not silently use a personal global Git identity. Change no global
+  Git configuration as part of this project.
+- Before publishing, inspect all outgoing commits and their metadata, not just
+  the current tree. Check archives separately. Do not publish until findings
+  are resolved. A deletion or redaction commit leaves the old contents in Git
+  history. Explain findings without repeating secret values; if history needs
+  rewriting, prepare a recoverable local backup and obtain explicit approval
+  before rewriting history or force-pushing. Exposed credentials also require
+  revocation/rotation; deleting a file cannot make them secret again.
+
 ## Router changes require an audit and manual review
 
 The integration must never SSH to a router, install redirection rules, change
